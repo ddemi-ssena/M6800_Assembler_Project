@@ -6,10 +6,8 @@ import re
 # Eğer lexer.py ve m6800_opcodes.py aynı dizindeyse:
 # from .m6800_opcodes import OPCODE_TABLE
 # Eğer assembler_core bir paketse ve ana dizinden çalıştırıyorsanız:
-from m6800_opcodes.py import OPCODE_TABLE # Bu satırı ana script'ten çalıştırırken kullanın
+from m6800_opcodes import OPCODE_TABLE, PSEUDO_OPS # Bu satırı ana script'ten çalıştırırken kullanın
 
-# Pseudo op'ları da bir yerde tanımlamak iyi olur, OPCODE_TABLE sadece gerçek komutları içeriyor.
-PSEUDO_OPS = {"ORG", "EQU", "FCB", "FDB", "FCC", "END"} # Büyük harfle
 
 # Etiketler için geçerli karakterler (basit bir regex)
 # İlk karakter harf, sonrakiler harf, rakam veya alt çizgi olabilir.

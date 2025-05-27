@@ -8,6 +8,8 @@ ADDR_MODE_INDEXED = "IND"
 ADDR_MODE_RELATIVE = "REL"
 ADDR_MODE_INHERENT = "INH" # Hem operand almayanlar hem de A, B acc. adresleme için
 
+PSEUDO_OPS = {"ORG", "EQU", "FCB", "FDB", "FCC", "END"}
+
 OPCODE_TABLE = {
     # Table 2'den başlayarak: Accumulator and Memory Operations
     "ADDA": {

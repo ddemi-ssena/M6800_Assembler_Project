@@ -479,9 +479,137 @@ def pass_two(processed_lines_pass1, symbol_table):
     return listing_output, machine_code_segments, list(set(errors_pass2)) # Hataları benzersiz yap
 
 
+# assembler_core/assembler.py
+# ... (dosyanın başındaki importlar ve fonksiyon tanımları aynı kalacak) ...
+
 # --- Ana Test Bloğu ---
 if __name__ == '__main__':
-    test_asm_code_full = """
+    # --- Test Dosyası Seçimi ---
+    # Aşağıdaki satırı test etmek istediğiniz dosya ile değiştirin.
+    # test_file_name = "inherent_ops.asm"
+    #test_file_name = "direct_extended_ops.asm" # << SADECE BURAYI DEĞİŞTİRİN
+    # test_file_name = "error_handling.asm"
+    test_file_name = "complex_example.asm"
+    # test_file_name = None # Eğer aşağıdaki gömülü testi çalıştırmak isterseniz
+
+    if test_file_name: # Eğer bir dosya adı belirtilmişse, o dosyayı test et
+        print(f"\n\n--- ASSEMBLER TESTİ ({test_file_name}) ---")
+        
+        try:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            # Proje kök dizinini bulmak için script_dir'in bir üst dizinine çıkıyoruz
+            # Bu, assembler.py'nin assembler_core içinde olduğunu varsayar.
+            project_root = os.path.dirname(script_dir) 
+            current_test_file_path = os.path.join(project_root, "tests", test_file_name)
+            
+            print(f"Test dosyası yükleniyor: {current_test_file_path}")
+            if not os.path.exists(current_test_file_path):
+                # Eğer script_dir proje kökü ise (nadir bir durum, ama olabilir)
+                current_test_file_path_alt = os.path.join("tests", test_file_name)
+                if os.path.exists(current_test_file_path_alt):
+                    current_test_file_path = current_test_file_path_alt
+                else: # Alternatif yol (eğer CWD zaten assembler_core ise ve dosya bir üstteki tests klasöründe)
+                    current_test_file_path_alt_2 = os.path.join("..", "tests", test_file_name)
+                    if os.path.exists(current_test_file_path_alt_2):
+                         current_test_file_path = current_test_file_path_alt_2
+                    else:
+                        raise FileNotFoundError(f"Test dosyası bulunamadı: {current_test_file_path}, {current_test_file_path_alt} veya {current_test_file_path_alt_2}")
+
+
+            with open(current_test_file_path, 'r', encoding='utf-8') as f:
+                source_lines_current_test = f.read().strip().split('\n')
+            print(f"{current_test_file_path} dosyasından {len(source_lines_current_test)} satır başarıyla yüklendi.")
+
+        except FileNotFoundError as e:
+            print(f"HATA: Test dosyası yüklenemedi. {e}")
+            print(f"Mevcut Çalışma Dizini (CWD): {os.getcwd()}")
+            print(f"Script Dizini: {script_dir}")
+            print(f"Proje Kökü (Tahmini): {project_root}")
+            print("Lütfen dosya yolunu kontrol edin veya `assembler.py` içindeki `test_file_name` için doğru yolu sağlayın.")
+            source_lines_current_test = [] 
+
+        if source_lines_current_test:
+            print(f"\n--- PASS 1 ({test_file_name}) ---")
+            sym_table_test, proc_lines_p1_test, errs_p1_test = pass_one(source_lines_current_test)
+
+            print(f"\nSembol Tablosu (Pass 1 sonrası, {test_file_name}):")
+            print(sym_table_test)
+            
+            if errs_p1_test:
+                print(f"\nPass 1 Hataları ({test_file_name}):")
+                for err_idx, err in enumerate(errs_p1_test): print(f"  P1 Hata {err_idx+1}: {err}")
+            else:
+                print(f"\nPass 1'de hata bulunamadı ({test_file_name}).")
+
+            print(f"\n--- PASS 2 ({test_file_name}) ---")
+            final_listing_test, mc_segments_test, errs_p2_combined_test = pass_two(proc_lines_p1_test, sym_table_test)
+            
+            pass1_error_messages_set_test = set(errs_p1_test)
+            # Sadece Pass 2'de ortaya çıkan veya Pass 1'dekinden farklı olan hataları bul
+            errs_p2_only_test = []
+            for p2_err in errs_p2_combined_test:
+                is_from_pass1_or_similar = False
+                for p1_err in pass1_error_messages_set_test:
+                    # Basit bir karşılaştırma, daha sofistike olabilir
+                    if p2_err == p1_err or p2_err in p1_err or p1_err in p2_err:
+                        is_from_pass1_or_similar = True
+                        break
+                if not is_from_pass1_or_similar:
+                    errs_p2_only_test.append(p2_err)
+
+
+            print(f"\nSon Listeleme (Pass 2 Sonucu, {test_file_name}):")
+            pass1_error_lines_test = {int(e.split(":")[0].split(" ")[1]) for e in errs_p1_test if "Satır" in e and e.split(":")[0].split(" ")[1].isdigit()}
+
+            for entry in final_listing_test:
+                mc_hex_display = entry['machine_code_hex'] if entry['machine_code_hex'] else "    "
+                line_num_str = f"L:{entry['line_num']:<2}"
+                addr_hex_str = f"Adr: {entry['address_hex']}"
+                code_str = f"Kod: {mc_hex_display:<8}" # Genişletilmiş makine kodu alanı
+                
+                label_str = entry['label'] if entry['label'] else ""
+                mnemonic_str = entry['mnemonic'] if entry['mnemonic'] else ""
+                operand_str = entry['operand_str'] if entry['operand_str'] else ""
+                comment_str = f"; {entry['comment']}" if entry['comment'] else ""
+                
+                print(f"{line_num_str} {addr_hex_str}  {code_str}  {label_str:<8} {mnemonic_str:<5} {operand_str:<15} {comment_str}")
+
+                if entry['error']:
+                    # Hatanın Pass 1'de zaten raporlanıp raporlanmadığını kontrol et
+                    is_pass1_error_reported = False
+                    for p1_err in errs_p1_test:
+                        # Hata mesajlarının içeriğini daha esnek karşılaştır
+                        if f"Satır {entry['line_num']}" in p1_err and entry['error'] in p1_err:
+                            is_pass1_error_reported = True
+                            break
+                    if not is_pass1_error_reported:
+                        print(f"    HATA (P2): {entry['error']}")
+
+
+            if errs_p2_only_test: # Sadece Pass 2'ye özgü yeni hatalar varsa listele
+                print(f"\nPass 2'de Oluşan Farklı Hatalar ({test_file_name}):")
+                for err_idx, err in enumerate(errs_p2_only_test): 
+                    print(f"  P2 Farklı Hata {err_idx+1}: {err}")
+            elif errs_p1_test and not errs_p2_only_test : 
+                 print("\n(Pass 2'de Pass 1 hataları dışında yeni hata bulunamadı.)")
+            elif not errs_p1_test and not errs_p2_only_test:
+                 print(f"\nPass 2'de ek hata bulunamadı ({test_file_name}).")
+            # else: Pass 1'de hata yoktu ama Pass 2'de hata oluştu durumu yukarıda ele alındı.
+                    
+            print(f"\nMakine Kodu Segmentleri ({test_file_name}):")
+            if mc_segments_test:
+                for addr, byte_codes in mc_segments_test:
+                    hex_codes = " ".join([f"{b:02X}" for b in byte_codes])
+                    print(f"  Segment @ ${addr:04X}: {hex_codes}")
+            else:
+                print("  (Makine kodu segmenti üretilmedi veya hatalar nedeniyle boş.)")
+        # Dosya bulunamadı veya boşsa buraya gelinir
+        elif not source_lines_current_test and test_file_name : # Sadece dosya adı varsa ama yüklenemediyse
+             print(f"'{test_file_name}' için test çalıştırılamadı (dosya yükleme hatası veya boş dosya).")
+
+    else: # test_file_name None ise veya boş string ise, gömülü testi çalıştır
+        print("\n\n--- GÖMÜLÜ TAM ASSEMBLER TESTİ (PASS 1 + PASS 2) ---")
+        test_asm_code_full = """
 START   LDAA    #$10        ; Load A with 16
         LDAB    #VAL1       ; VAL1 EQU ile tanımlı olacak
 LOOP    ADDA    #1
@@ -514,70 +642,77 @@ BADFCB  FCB     $1000       ; Aralık dışı FCB
         END
 FINAL   LDAA    #0          ; END'den sonra bu işlenmemeli
 """
-    source_lines_full = test_asm_code_full.strip().split('\n')
-    
-    print("\n\n--- TAM ASSEMBLER TESTİ (PASS 1 + PASS 2) ---")
-    print("--- PASS 1 ---")
-    sym_table, proc_lines_p1, errs_p1 = pass_one(source_lines_full)
-
-    print("\nSembol Tablosu (Pass 1 sonrası):")
-    print(sym_table)
-    
-    if errs_p1:
-        print("\nPass 1 Hataları:")
-        for err_idx, err in enumerate(errs_p1): print(f"  P1 Hata {err_idx+1}: {err}")
-    else:
-        print("\nPass 1'de hata bulunamadı.")
-
-
-    print("\n--- PASS 2 ---")
-    final_listing, mc_segments, errs_p2 = pass_two(proc_lines_p1, sym_table)
-
-    print("\nSon Listeleme (Pass 2 Sonucu):")
-    pass1_error_lines = {int(e.split(":")[0].split(" ")[1]) for e in errs_p1 if "Satır" in e}
-
-    for entry in final_listing:
-        mc_hex_display = entry['machine_code_hex'] if entry['machine_code_hex'] else ""
-        line_num_str = f"L:{entry['line_num']:<2}"
-        addr_hex_str = f"Adr: {entry['address_hex']}"
-        code_str = f"Kod: {mc_hex_display:<10}"
+        source_lines_full = test_asm_code_full.strip().split('\n')
         
-        print(f"{line_num_str} {addr_hex_str}, {code_str} | {entry['original_line']}")
+        print("--- PASS 1 (Gömülü Test) ---")
+        sym_table, proc_lines_p1, errs_p1 = pass_one(source_lines_full)
+
+        print("\nSembol Tablosu (Pass 1 sonrası, Gömülü Test):")
+        print(sym_table)
         
-        if entry['error']:
-            is_pass1_error = entry['line_num'] in pass1_error_lines and any(str(entry['line_num']) in e for e in errs_p1 if entry['error'] in e)
-            if not is_pass1_error: # Sadece Pass2'de oluşan yeni hataları veya farklı hataları göster
-                print(f"    HATA (P2): {entry['error']}")
-            elif entry['error'] and entry['error'] not in errs_p1: # Pass1'de olmayan ama Pass2'de olan aynı satırdaki hata
-                 print(f"    HATA (P2-Yeni): {entry['error']}")
-
-
-    if errs_p2:
-        print("\nPass 2'de Oluşan Farklı Hatalar:")
-        unique_pass2_errors = []
-        for p2_err in errs_p2:
-            is_from_pass1 = False
-            for p1_err in errs_p1:
-                # Hata mesajlarının içeriğini karşılaştır
-                if p2_err in p1_err or p1_err in p2_err : # Basit bir kontrol
-                    is_from_pass1 = True
-                    break
-            if not is_from_pass1:
-                unique_pass2_errors.append(p2_err)
-
-        if unique_pass2_errors:
-            for err_idx, err in enumerate(unique_pass2_errors): 
-                print(f"  P2 Farklı Hata {err_idx+1}: {err}")
+        if errs_p1:
+            print("\nPass 1 Hataları (Gömülü Test):")
+            for err_idx, err in enumerate(errs_p1): print(f"  P1 Hata {err_idx+1}: {err}")
         else:
-            print("  (Pass 2'de Pass 1'den farklı yeni hata bulunamadı veya hatalar Pass 1 ile aynı.)")
+            print("\nPass 1'de hata bulunamadı (Gömülü Test).")
 
-    else:
-        print("\nPass 2'de ek hata bulunamadı.")
+        print("\n--- PASS 2 (Gömülü Test) ---")
+        final_listing, mc_segments, errs_p2_combined_full = pass_two(proc_lines_p1, sym_table)
+
+        pass1_error_messages_set_full = set(errs_p1)
+        errs_p2_only_full = []
+        for p2_err in errs_p2_combined_full:
+            is_from_pass1_or_similar = False
+            for p1_err in pass1_error_messages_set_full:
+                if p2_err == p1_err or p2_err in p1_err or p1_err in p2_err:
+                    is_from_pass1_or_similar = True
+                    break
+            if not is_from_pass1_or_similar:
+                errs_p2_only_full.append(p2_err)
+        
+
+        print("\nSon Listeleme (Pass 2 Sonucu, Gömülü Test):")
+        # ... (Gömülü test için listeleme yazdırma kodunuzu buraya kopyalayın,
+        #      final_listing, errs_p1, errs_p2_only_full gibi değişkenleri kullanarak) ...
+        pass1_error_lines_full = {int(e.split(":")[0].split(" ")[1]) for e in errs_p1 if "Satır" in e and e.split(":")[0].split(" ")[1].isdigit()}
+
+        for entry in final_listing:
+            mc_hex_display = entry['machine_code_hex'] if entry['machine_code_hex'] else "    "
+            line_num_str = f"L:{entry['line_num']:<2}" # Satır numarası için sabit genişlik
+            addr_hex_str = f"Adr: {entry['address_hex']}"
+            code_str = f"Kod: {mc_hex_display:<10}" # Makine kodu için daha geniş alan
             
-    print("\nMakine Kodu Segmentleri:")
-    if mc_segments:
-        for addr, byte_codes in mc_segments:
-            hex_codes = " ".join([f"{b:02X}" for b in byte_codes])
-            print(f"  Segment @ ${addr:04X}: {hex_codes}")
-    else:
-        print("  (Makine kodu segmenti üretilmedi veya hatalar nedeniyle boş.)")
+            label_str = entry['label'] if entry['label'] else ""
+            mnemonic_str = entry['mnemonic'] if entry['mnemonic'] else ""
+            operand_str = entry['operand_str'] if entry['operand_str'] else ""
+            comment_str = f"; {entry['comment']}" if entry['comment'] else ""
+
+            # Daha düzenli bir çıktı için f-string ile formatlama
+            print(f"{line_num_str} {addr_hex_str}  {code_str}  {label_str:<8} {mnemonic_str:<5} {operand_str:<15} {comment_str}")
+
+            if entry['error']:
+                is_pass1_error_reported = False
+                for p1_err in errs_p1:
+                    if f"Satır {entry['line_num']}" in p1_err and entry['error'] in p1_err:
+                        is_pass1_error_reported = True
+                        break
+                if not is_pass1_error_reported:
+                    print(f"    HATA (P2): {entry['error']}")
+
+
+        if errs_p2_only_full:
+            print("\nPass 2'de Oluşan Farklı Hatalar (Gömülü Test):")
+            for err_idx, err in enumerate(errs_p2_only_full): 
+                print(f"  P2 Farklı Hata {err_idx+1}: {err}")
+        elif errs_p1 and not errs_p2_only_full:
+            print("\n(Pass 2'de Pass 1 hataları dışında yeni hata bulunamadı - Gömülü Test.)")
+        elif not errs_p1 and not errs_p2_only_full:
+            print("\nPass 2'de ek hata bulunamadı (Gömülü Test).")
+
+        print("\nMakine Kodu Segmentleri (Gömülü Test):")
+        if mc_segments:
+            for addr, byte_codes in mc_segments:
+                hex_codes = " ".join([f"{b:02X}" for b in byte_codes])
+                print(f"  Segment @ ${addr:04X}: {hex_codes}")
+        else:
+            print("  (Makine kodu segmenti üretilmedi veya hatalar nedeniyle boş - Gömülü Test.)")
