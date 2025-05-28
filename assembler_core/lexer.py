@@ -6,7 +6,7 @@ import re
 # Eğer lexer.py ve m6800_opcodes.py aynı dizindeyse:
 # from .m6800_opcodes import OPCODE_TABLE
 # Eğer assembler_core bir paketse ve ana dizinden çalıştırıyorsanız:
-from m6800_opcodes import OPCODE_TABLE, PSEUDO_OPS # Bu satırı ana script'ten çalıştırırken kullanın
+from .m6800_opcodes import OPCODE_TABLE, PSEUDO_OPS # Bu satırı ana script'ten çalıştırırken kullanın
 
 
 # Etiketler için geçerli karakterler (basit bir regex)

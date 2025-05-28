@@ -15,30 +15,21 @@ print(f"assembler.py: sys.path = {sys.path}")
 # __package__ doluysa (yani bir paket içinden import edildiyse) göreceli import dene
 if __package__: # __package__ None veya boş string değilse
     print(f"assembler.py: Paket '{__package__}' olarak algılandı. Göreceli importlar deneniyor (.lexer vb.)...")
-    try:
-        from .lexer import parse_line, LABEL_REGEX
-        from .m6800_opcodes import OPCODE_TABLE, ADDR_MODE_IMMEDIATE, ADDR_MODE_DIRECT, \
-                                   ADDR_MODE_EXTENDED, ADDR_MODE_INDEXED, ADDR_MODE_RELATIVE, \
-                                   ADDR_MODE_INHERENT, PSEUDO_OPS
-        from .symbol_table import SymbolTable
-        print("assembler.py: Göreceli importlar BAŞARILI.")
-    except ImportError as e_rel:
-        print(f"assembler.py: Göreceli importlar (__package__='{__package__}') BAŞARISIZ: {e_rel}")
-        print("assembler.py: Bu durum, paket yapısı doğru kurulmuşsa ve __init__.py dosyaları mevcutsa beklenmemelidir.")
-        print("assembler.py: Acil durum olarak doğrudan (noktasız) importlar deneniyor...")
-        # Bu genellikle bir şeylerin çok yanlış gittiği anlamına gelir eğer __package__ doluysa.
-        # Bu blok, sys.path'te doğru dizinlerin olmasını gerektirir.
-        from lexer import parse_line, LABEL_REGEX
-        from m6800_opcodes import OPCODE_TABLE, ADDR_MODE_IMMEDIATE, ADDR_MODE_DIRECT, \
-                                   ADDR_MODE_EXTENDED, ADDR_MODE_INDEXED, ADDR_MODE_RELATIVE, \
-                                   ADDR_MODE_INHERENT, PSEUDO_OPS
-        from symbol_table import SymbolTable
-        print("assembler.py: Acil durum doğrudan importları tamamlandı (başarılı veya başarısız olacak).")
+    # TRY-EXCEPT'İ ŞİMDİLİK KALDIRALIM VEYA BASİTLEŞTİRELİM
+    # try:
+    from .lexer import parse_line, LABEL_REGEX
+    from .m6800_opcodes import OPCODE_TABLE, ADDR_MODE_IMMEDIATE, ADDR_MODE_DIRECT, \
+                               ADDR_MODE_EXTENDED, ADDR_MODE_INDEXED, ADDR_MODE_RELATIVE, \
+                               ADDR_MODE_INHERENT, PSEUDO_OPS
+    from .symbol_table import SymbolTable
+    print("assembler.py: Göreceli importlar denendi (başarılı veya başarısız olacak).")
+    # except ImportError as e_rel:
+    #     print(f"assembler.py: Göreceli importlar (__package__='{__package__}') BAŞARISIZ: {e_rel}")
+    #     # Acil durum bloğunu tamamen kaldırın veya yorumlayın
+    #     raise # Orijinal hatayı görmek için
 else:
-    # __package__ None veya boşsa (örn: script doğrudan "python assembler_core/assembler.py" ile çalıştırılıyorsa)
+    # Bu blok __main__ testi için kalabilir
     print("assembler.py: Paket bilgisi yok veya boş (__package__ is None/empty). Doğrudan (noktasız) importlar deneniyor (lexer vb.)...")
-    # Bu durumda, Python'un bu dosyaları bulabilmesi için assembler_core klasörünün
-    # sys.path içinde olması veya mevcut çalışma dizini olması gerekir.
     from lexer import parse_line, LABEL_REGEX
     from m6800_opcodes import OPCODE_TABLE, ADDR_MODE_IMMEDIATE, ADDR_MODE_DIRECT, \
                                ADDR_MODE_EXTENDED, ADDR_MODE_INDEXED, ADDR_MODE_RELATIVE, \

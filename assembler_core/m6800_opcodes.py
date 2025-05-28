@@ -64,8 +64,8 @@ OPCODE_TABLE = {
         ADDR_MODE_EXTENDED:  ("F5", 3, None)
     },
     "CLR":  { # Memory operand
-        ADDR_MODE_INDEXED:   ("6F", 2, None), # OP: 6F, #: 2 (Table 2'de # 7 diyor ama bu çevrim sayısı olmalı, byte sayısı 2'dir)
-        ADDR_MODE_EXTENDED:  ("7F", 3, None)  # OP: 7F, #: 3 (Table 2'de # 6 diyor ama bu çevrim sayısı olmalı, byte sayısı 3'tür)
+        ADDR_MODE_INDEXED:   ("6F", 2, None), # **** OP: 6F, #: 2 (Table 2'de # 7 diyor ama bu çevrim sayısı olmalı, byte sayısı 2'dir)
+        ADDR_MODE_EXTENDED:  ("7F", 3, None)  # ****OP: 7F, #: 3 (Table 2'de # 6 diyor ama bu çevrim sayısı olmalı, byte sayısı 3'tür)
     },
     "CLRA": { # Implied
         ADDR_MODE_INHERENT:  ("4F", 1, None)
