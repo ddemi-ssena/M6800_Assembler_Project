@@ -150,12 +150,23 @@ def parse_operand_for_equ(operand_str, symbol_table, line_num):
     else:
         return None, f"Satır {line_num}: EQU/ORG için geçersiz değer: {operand_str}"
 
+# assembler_core/assembler.py
+# ... (dosyanın başındaki importlar ve diğer fonksiyonlar aynı kalacak) ...
+
 # --- Birinci Geçiş (Pass 1) ---
 def pass_one(source_lines):
     symbol_table = SymbolTable()
-    processed_lines_data = [] 
+    processed_lines_data = []
     errors = []
-    location_counter = 0 
+    location_counter = 0
+
+    # PSEUDO_OPS'a RMB'yi ekleyelim ki lexer'da mnemonic olarak tanınsın
+    # Eğer PSEUDO_OPS m6800_opcodes.py'de tanımlıysa ve oradan import ediliyorsa
+    # oraya eklemek daha doğru olur. Şimdilik burada kontrol edelim.
+    # Veya PSEUDO_OPS = {"ORG", "EQU", "FCB", "FDB", "FCC", "END", "RMB"} şeklinde
+    # m6800_opcodes.py içinde güncellenmeli.
+    # Bu örnekte, PSEUDO_OPS'ın zaten RMB'yi içerdiğini varsayıyorum
+    # (ya da lexer'ın mnemonic olarak tanıdığını).
 
     for i, line_text in enumerate(source_lines):
         parsed_line_info = parse_line(i + 1, line_text)
@@ -178,14 +189,14 @@ def pass_one(source_lines):
         }
 
         if current_line_data["label"]:
-            if current_line_data["mnemonic"] and current_line_data["mnemonic"].upper() == "EQU":
-                pass 
-            else:
+            # RMB için etiket ataması RMB bloğunda yapılacak, EQU için ise EQU bloğunda.
+            # Diğer durumlarda etiketi mevcut location_counter ile ekle.
+            if not (current_line_data["mnemonic"] and current_line_data["mnemonic"].upper() in ["EQU", "RMB"]):
                 try:
                     symbol_table.add_symbol(current_line_data["label"].upper(), location_counter, current_line_data["line_num"])
                 except ValueError as e:
                     err_msg = str(e); errors.append(err_msg); current_line_data["error"] = err_msg
-        
+
         if current_line_data["mnemonic"]:
             mnemonic_upper = current_line_data["mnemonic"].upper()
 
@@ -195,7 +206,7 @@ def pass_one(source_lines):
                         val, err = parse_operand_for_equ(current_line_data["operand_str"], symbol_table, current_line_data["line_num"])
                         if err: raise ValueError(err)
                         location_counter = val
-                        current_line_data["address"] = location_counter
+                        current_line_data["address"] = location_counter # Adresi güncelle
                     except ValueError as e:
                         err_msg = f"Satır {current_line_data['line_num']}: ORG - {e}"
                         errors.append(err_msg); current_line_data["error"] = err_msg
@@ -215,15 +226,47 @@ def pass_one(source_lines):
                     try:
                         value, err_equ = parse_operand_for_equ(current_line_data["operand_str"], symbol_table, current_line_data["line_num"])
                         if err_equ: raise ValueError(err_equ)
+                        # EQU etiketi, location_counter'ı değil, hesaplanan değeri alır.
                         symbol_table.add_symbol(current_line_data["label"].upper(), value, current_line_data["line_num"])
+                        current_line_data["address"] = None # EQU'nun adresi yoktur, değeri vardır.
                     except ValueError as e:
                         err_msg = str(e); errors.append(err_msg); current_line_data["error"] = err_msg
-                current_line_data["size"] = 0 
-            
+                current_line_data["size"] = 0
+
+            # RMB İÇİN YENİ EKlenen BLOK BAŞLANGICI
+            elif mnemonic_upper == "RMB":
+                if current_line_data["label"]: # RMB satırında etiket varsa
+                    try:
+                        symbol_table.add_symbol(current_line_data["label"].upper(), location_counter, current_line_data["line_num"])
+                    except ValueError as e:
+                        err_msg = str(e); errors.append(err_msg); current_line_data["error"] = err_msg
+
+                if current_line_data["operand_str"]:
+                    try:
+                        # RMB'nin operandı bir sayı olmalı (kaç byte ayrılacağı)
+                        # parse_operand_for_equ basit sayıları ve etiketleri çözebilir
+                        num_bytes_to_reserve, err_rmb = parse_operand_for_equ(current_line_data["operand_str"], symbol_table, current_line_data["line_num"])
+                        if err_rmb: raise ValueError(err_rmb)
+                        if not isinstance(num_bytes_to_reserve, int) or num_bytes_to_reserve < 0:
+                            raise ValueError(f"RMB için geçersiz byte sayısı: {current_line_data['operand_str']}")
+
+                        current_line_data["size"] = num_bytes_to_reserve # Ayrılan byte sayısı
+                        # location_counter bu bloğun sonunda artırılacak
+                    except ValueError as e:
+                        err_msg = f"Satır {current_line_data['line_num']}: RMB - {e}"
+                        errors.append(err_msg); current_line_data["error"] = err_msg
+                        current_line_data["size"] = 0 # Hata durumunda boyut 0
+                else:
+                    err_msg = f"Satır {current_line_data['line_num']}: RMB için operand (ayrılacak byte sayısı) eksik."
+                    errors.append(err_msg); current_line_data["error"] = err_msg
+                    current_line_data["size"] = 0
+                # RMB için makine kodu üretilmez, bu yüzden addressing_mode None kalır
+            # RMB İÇİN YENİ EKlenen BLOK SONU
+
             elif mnemonic_upper == "END":
                 current_line_data["size"] = 0
-                processed_lines_data.append(current_line_data) 
-                break 
+                processed_lines_data.append(current_line_data)
+                break
 
             elif mnemonic_upper == "FCB":
                 if current_line_data["operand_str"]:
@@ -231,9 +274,11 @@ def pass_one(source_lines):
                         byte_value_strs = [s.strip() for s in current_line_data["operand_str"].split(',')]
                         current_line_data["size"] = len(byte_value_strs)
                         for val_str in byte_value_strs:
-                            _, err_parse = parse_operand_for_equ(val_str, symbol_table, current_line_data["line_num"])
-                            if err_parse and not is_label_like(val_str):
+                            # FCB'nin operandları Pass1'de etiket olabilir, bu yüzden sembol tablosuyla çözmeye çalış
+                            val, err_parse = parse_operand_for_equ(val_str, symbol_table, current_line_data["line_num"])
+                            if err_parse and not is_label_like(val_str): # Eğer etiket değilse ve parse hatası varsa
                                  raise ValueError(f"FCB için geçersiz byte değeri: {val_str} ({err_parse})")
+                            # Değer aralığı kontrolü Pass2'de yapılabilir veya burada da temel bir kontrol yapılabilir
                     except ValueError as e:
                         err_msg = f"Satır {current_line_data['line_num']}: {e}"; errors.append(err_msg)
                         current_line_data["error"] = err_msg; current_line_data["size"] = 0
@@ -247,7 +292,7 @@ def pass_one(source_lines):
                         word_value_strs = [s.strip() for s in current_line_data["operand_str"].split(',')]
                         current_line_data["size"] = len(word_value_strs) * 2
                         for val_str in word_value_strs:
-                            _, err_parse = parse_operand_for_equ(val_str, symbol_table, current_line_data["line_num"])
+                            val, err_parse = parse_operand_for_equ(val_str, symbol_table, current_line_data["line_num"])
                             if err_parse and not is_label_like(val_str):
                                  raise ValueError(f"FDB için geçersiz word değeri: {val_str} ({err_parse})")
                     except ValueError as e:
@@ -266,8 +311,8 @@ def pass_one(source_lines):
                 else:
                     err_msg = f"Satır {current_line_data['line_num']}: FCC için geçersiz string formatı: {op_str}"
                     errors.append(err_msg); current_line_data["error"] = err_msg; current_line_data["size"] = 0
-            
-            else: 
+
+            else: # Diğer tüm komutlar (opcode'lar)
                 mode, size, err_addr = determine_addressing_mode_and_size(
                     mnemonic_upper, current_line_data["operand_str"], symbol_table, location_counter
                 )
@@ -277,34 +322,68 @@ def pass_one(source_lines):
                 else:
                     current_line_data["size"] = size
                     current_line_data["addressing_mode"] = mode
-        
+
         elif current_line_data["label"] and not current_line_data["mnemonic"]:
+            # Sadece etiket içeren bir satır (örn: LOOP_END)
+            # Bu durumda etiket zaten yukarıda (if current_line_data["label"] bloğunda)
+            # mevcut location_counter ile eklenmiş olmalı.
+            # Boyutu 0'dır.
             current_line_data["size"] = 0
-            
+
+        # Hata yoksa ve işlenen satır ORG, EQU, END değilse location_counter'ı artır
         if not current_line_data.get("error"):
             mne_for_lc = current_line_data["mnemonic"].upper() if current_line_data["mnemonic"] else ""
-            if mne_for_lc not in ["EQU", "ORG", "END"]:
+            if mne_for_lc not in ["EQU", "ORG", "END"]: # RMB de LC'yi artırır
                  location_counter += current_line_data["size"]
-        
+
         processed_lines_data.append(current_line_data)
 
     return symbol_table, processed_lines_data, errors
 
 # --- İkinci Geçiş (Pass 2) için Yardımcı Fonksiyon ---
 def parse_operand_value_for_pass2(operand_str, symbol_table, line_num, current_address_plus_size_for_relative=0):
-    if operand_str is None: 
+    if operand_str is None:
         return 0, None
 
     operand_str = operand_str.strip()
-    
+
+    # Basit ifade ayrıştırma (ETİKET+SAYI veya ETİKET-SAYI)
+    # Daha karmaşık ifadeler için daha gelişmiş bir parser gerekebilir.
+    match_plus = re.fullmatch(r"([a-zA-Z_][a-zA-Z0-9_]*)\s*\+\s*([0-9]+|\$[0-9A-Fa-f]+|%[01]+)", operand_str, re.IGNORECASE)
+    match_minus = re.fullmatch(r"([a-zA-Z_][a-zA-Z0-9_]*)\s*-\s*([0-9]+|\$[0-9A-Fa-f]+|%[01]+)", operand_str, re.IGNORECASE)
+
+    if match_plus:
+        label_name = match_plus.group(1)
+        offset_str = match_plus.group(2)
+        label_value = symbol_table.get_symbol_value(label_name.upper())
+        if label_value is None:
+            return None, f"Satır {line_num}: İfadede tanımsız etiket: {label_name}"
+
+        offset_value, err_offset = parse_operand_value_for_pass2(offset_str, symbol_table, line_num) # offset_str zaten basit bir sayı olmalı
+        if err_offset:
+            return None, f"Satır {line_num}: İfadede geçersiz offset: {offset_str} ({err_offset})"
+        return label_value + offset_value, None
+    elif match_minus:
+        label_name = match_minus.group(1)
+        offset_str = match_minus.group(2)
+        label_value = symbol_table.get_symbol_value(label_name.upper())
+        if label_value is None:
+            return None, f"Satır {line_num}: İfadede tanımsız etiket: {label_name}"
+
+        offset_value, err_offset = parse_operand_value_for_pass2(offset_str, symbol_table, line_num)
+        if err_offset:
+            return None, f"Satır {line_num}: İfadede geçersiz offset: {offset_str} ({err_offset})"
+        return label_value - offset_value, None
+
+
     if IMM_REGEX.match(operand_str):
         val_str = operand_str[1:]
-        return parse_operand_value_for_pass2(val_str, symbol_table, line_num)
+        return parse_operand_value_for_pass2(val_str, symbol_table, line_num) # Rekürsif çağrı # olmadan
 
     indexed_match = IND_REGEX.match(operand_str)
     if indexed_match:
         offset_str = indexed_match.group(1).strip()
-        if not offset_str: 
+        if not offset_str: # Sadece ,X veya ,x ise offset 0'dır
             return 0, None
         return parse_operand_value_for_pass2(offset_str, symbol_table, line_num)
 
@@ -316,16 +395,25 @@ def parse_operand_value_for_pass2(operand_str, symbol_table, line_num, current_a
         try: return int(operand_str[1:], 2), None
         except ValueError: return None, f"Satır {line_num}: Geçersiz binary değer: {operand_str}"
 
-    if is_label_like(operand_str):
+    if is_label_like(operand_str): # Bu artık sadece tek bir etiket için çalışır
         value = symbol_table.get_symbol_value(operand_str.upper())
         if value is not None: return value, None
         else: return None, f"Satır {line_num}: Tanımsız etiket: {operand_str}"
-            
+
     if DEC_REGEX.match(operand_str):
         try: return int(operand_str), None
         except ValueError: return None, f"Satır {line_num}: Geçersiz decimal değer: {operand_str}"
-            
+
     return None, f"Satır {line_num}: Operand ayrıştırılamadı: {operand_str}"
+
+
+# --- İkinci Geçiş (Pass 2) ---
+# pass_two fonksiyonunda RMB için özel bir işlem yapmaya gerek yok,
+# çünkü RMB makine kodu üretmez. Listelemede doğru görünmesi yeterlidir.
+# Sadece VAR_A+1 gibi ifadelerin parse_operand_value_for_pass2 tarafından
+# doğru çözüldüğünden emin olun.
+
+# ... (pass_two ve __main__ bloğu aynı kalabilir) ...
 
 # --- İkinci Geçiş (Pass 2) ---
 def pass_two(processed_lines_pass1, symbol_table):
@@ -362,7 +450,7 @@ def pass_two(processed_lines_pass1, symbol_table):
             operand_str_p1 = line_data_p1["operand_str"]
             addressing_mode_p1 = line_data_p1.get("addressing_mode")
 
-            if mnemonic_upper in ["ORG", "EQU", "END"]:
+            if mnemonic_upper in ["ORG", "EQU", "END", "RMB"]: # RMB EKLENDİ
                 pass 
             elif mnemonic_upper == "FCB":
                 if operand_str_p1:
