@@ -140,7 +140,7 @@ class MainWindow(tk.Tk):
         self.listing_display.clear_text()
         self.symbol_table_display.clear_text()
         self.machine_code_display.clear_text()
-        self.error_display.clear_text()
+        self.error_display.clear_text() # Hata ekranını her seferinde temizle
 
         source_code = self.code_editor.get_code()
         if not source_code.strip():
@@ -150,83 +150,128 @@ class MainWindow(tk.Tk):
 
         source_lines = source_code.strip().split('\n')
 
-        # --- Derleme işlemi ---
-        # TODO: Bu işlemi ayrı bir thread'de çalıştırmak GUI'nin donmasını engeller.
-        # Tkinter için `threading` modülü ve `queue` ile ana thread'e bilgi gönderme
-        # veya `after` metodu ile periyodik kontrol düşünülebilir.
-        # Şimdilik basitlik adına doğrudan çağırıyoruz.
         try:
+            # --- Pass 1 ---
             sym_table, proc_lines_p1, errs_p1 = assembler.pass_one(source_lines)
 
-            # Pass 1 Hatalarını Göster
+            # --- Pass 1 Hatalarını Göster (Hatalar/Uyarılar Sekmesi) ---
+            # errs_p1 listesi zaten formatlı mesajlar içermeli ("Satır X (Lexer): ..." veya "Satır X: ...")
             if errs_p1:
-                self.error_display.append_text("--- PASS 1 HATALARI ---")
-                for err in errs_p1:
-                    self.error_display.append_text(err)
+                self.error_display.append_text("--- PASS 1 / LEXER HATALARI ---")
+                for err_msg in errs_p1:
+                    self.error_display.append_text(err_msg)
 
+            # --- Pass 2 ---
+            # Pass 2'ye, Pass 1'den gelen işlenmiş satırları (hatalarıyla birlikte) ve sembol tablosunu veriyoruz.
             final_listing, mc_segments, errs_p2_combined = assembler.pass_two(proc_lines_p1, sym_table)
 
-            # Sembol Tablosunu Göster
+            # --- Sembol Tablosunu Göster ---
             self.symbol_table_display.set_text(str(sym_table))
 
-            # Listelemeyi Göster
-            listing_text = []
+            # --- Listelemeyi Oluştur ve Göster ---
+            listing_text_lines = [] # Listeleme için satırları biriktireceğimiz liste
             for entry in final_listing:
+                # Temel listeleme satırını oluştur
                 line = f"L:{entry['line_num']:<3} Adr:{entry['address_hex']:<6} Kod:{entry['machine_code_hex']:<10} "
                 line += f"{entry['label'] or '':<8} {entry['mnemonic'] or '':<6} {entry['operand_str'] or '':<15}"
                 if entry['comment']:
                     line += f"; {entry['comment']}"
-                listing_text.append(line)
-                # Satır bazlı hataları da listelemeye ekleyebiliriz veya ayrı hata alanında
-                if entry['error']:
-                    is_p1_error = any(f"Satır {entry['line_num']}" in p1_err and entry['error'] in p1_err for p1_err in errs_p1)
-                    if not is_p1_error:
-                         listing_text.append(f"    HATA (P2): {entry['error']}")
-                         self.error_display.append_text(f"Satır {entry['line_num']} (P2): {entry['error']}")
+                listing_text_lines.append(line)
 
-            self.listing_display.set_text("\n".join(listing_text))
+                # Eğer bu satır için bir hata varsa (Lexer, Pass 1 veya Pass 2'den), listelemeye ekle
+                # entry['error'] ham hata mesajını içerir (örn: "Tanımsız ifade...")
+                # errs_p1 zaten formatlı ("Satır X (Lexer): ...")
+                # errs_p2_combined da formatlı olabilir veya ham olabilir, assembler.py'ye bağlı.
+                # Şimdilik, entry['error']'ı doğrudan kullanalım.
+                # Pass 1'den gelen hatalar (lexer dahil) zaten entry['error'] içinde olmalı.
+                # Pass 2'de oluşan yeni hatalar da pass_two tarafından entry['error']'a eklenir.
+                if entry.get('error'):
+                    # Hatanın kaynağını (P1, P2) belirtmek için daha karmaşık bir mantık kurulabilir,
+                    # ama en basit haliyle hata mesajını yazdıralım.
+                    # Hata mesajının başına "HATA:" ekleyebiliriz.
+                    # `errs_p1` zaten genel hata ekranında gösteriliyor, bu yüzden burada
+                    # sadece satırın yanında hatayı göstermek yeterli olabilir.
+                    # Eğer `errs_p1` içindeki mesaj, `entry['error']` ile aynıysa (veya onu içeriyorsa),
+                    # bu bir Pass 1/Lexer hatasıdır.
+                    
+                    # Basitleştirilmiş gösterim:
+                    listing_text_lines.append(f"    HATA: {entry['error']}")
+
+            self.listing_display.set_text("\n".join(listing_text_lines))
 
 
-            # Sadece Pass 2'de oluşan farklı hataları göster
-            pass1_error_messages_set = set(errs_p1)
-            errs_p2_only = []
-            for p2_err in errs_p2_combined:
-                is_from_pass1_or_similar = False
-                for p1_err in pass1_error_messages_set:
-                    # Basit bir karşılaştırma
-                    if p2_err == p1_err or p2_err in p1_err or p1_err in p2_err:
-                        is_from_pass1_or_similar = True; break
-                if not is_from_pass1_or_similar: errs_p2_only.append(p2_err)
+            # --- Sadece Pass 2'de Oluşan Farklı Hataları Göster (Hatalar/Uyarılar Sekmesi) ---
+            # errs_p2_combined, pass_two'dan dönen tüm Pass 2 hatalarını içerir.
+            # Bunlardan Pass 1'de zaten raporlanmamış olanları ayıklamaya gerek yok,
+            # çünkü Pass 1 hataları zaten errs_p1 ile yukarıda gösterildi.
+            # Sadece errs_p2_combined'daki (Pass 1'den gelenler hariç) hataları göstermek istiyorsak:
+            
+            unique_pass2_errors = []
+            if errs_p2_combined: # Eğer pass_two'dan herhangi bir hata mesajı listesi döndüyse
+                pass1_error_raw_messages = set() # Pass 1'den gelen ham hata mesajlarını tutmak için
+                for p1_entry in proc_lines_p1:
+                    if p1_entry.get('error'):
+                        pass1_error_raw_messages.add(p1_entry['error'])
+                
+                for p2_err_msg_from_pass_two in errs_p2_combined:
+                    # p2_err_msg_from_pass_two, "Satır X: mesaj" formatında olabilir.
+                    # Eğer bu mesajın özü, Pass 1'den gelen bir hatanın özü değilse,
+                    # o zaman bu gerçekten yeni bir Pass 2 hatasıdır.
+                    # Bu karşılaştırma biraz karmaşık olabilir.
+                    # Şimdilik, errs_p2_combined'ı olduğu gibi yazdıralım ve
+                    # assembler.py'nin pass_two fonksiyonunun sadece YENİ P2 hatalarını döndürdüğünü varsayalım.
+                    # (assembler.py'de `errors_pass2` listesi sadece P2'de oluşanları tutuyordu)
+                    is_already_in_p1_formatted_list = False
+                    for p1_formatted_err in errs_p1:
+                        # errs_p2_combined'daki mesajlar "Satır X: Hata" formatında olabilir
+                        # p1_formatted_err "Satır X (Lexer): Hata" veya "Satır X: Hata" formatında
+                        # Basit bir `in` kontrolü deneyebiliriz.
+                        if p2_err_msg_from_pass_two in p1_formatted_err or \
+                           p1_formatted_err in p2_err_msg_from_pass_two : # Çok kaba bir kontrol
+                            is_already_in_p1_formatted_list = True
+                            break
+                    if not is_already_in_p1_formatted_list:
+                         unique_pass2_errors.append(p2_err_msg_from_pass_two)
 
-            if errs_p2_only:
-                self.error_display.append_text("\n--- PASS 2'DE OLUŞAN FARKLI HATALAR ---")
-                for err in errs_p2_only:
-                    self.error_display.append_text(err)
 
-            # Makine Kodu Segmentlerini Göster
+            if unique_pass2_errors: # Eğer gerçekten sadece Pass 2'ye özgü yeni hatalar varsa
+                self.error_display.append_text("\n--- PASS 2 HATALARI ---")
+                for err_msg in unique_pass2_errors:
+                    self.error_display.append_text(err_msg)
+            elif errs_p2_combined and not errs_p1: # Pass1'de hata yoktu ama Pass2'de var (bu durum unique_pass2_errors ile kapsanmalı)
+                 self.error_display.append_text("\n--- PASS 2 HATALARI ---")
+                 for err_msg in errs_p2_combined:
+                     self.error_display.append_text(err_msg)
+
+
+            # --- Makine Kodunu Göster ---
             mc_text = []
             if mc_segments:
                 for addr, byte_codes in mc_segments:
                     hex_codes = " ".join([f"{b:02X}" for b in byte_codes])
                     mc_text.append(f"Segment @ ${addr:04X}: {hex_codes}")
-            else:
-                mc_text.append("(Makine kodu segmenti üretilmedi veya hatalar nedeniyle boş.)")
+            elif not (errs_p1 or unique_pass2_errors or (errs_p2_combined and not errs_p1)): # Hata yoksa ve segment yoksa
+                mc_text.append("(Makine kodu üretilmedi - Muhtemelen sadece pseudo-op'lar veya boş kod.)")
+            else: # Hata varsa ve segment yoksa
+                mc_text.append("(Hatalar nedeniyle makine kodu üretilmedi veya boş.)")
             self.machine_code_display.set_text("\n".join(mc_text))
 
-            if not errs_p1 and not errs_p2_only: # Sadece pass2'ye özgü yeni hata yoksa
+            # --- Durum Mesajı ve Bilgilendirme ---
+            total_errors = len(errs_p1) + len(unique_pass2_errors)
+            if errs_p2_combined and not errs_p1 and not unique_pass2_errors: # Sadece P2 hataları varsa ve unique boşsa, P2'nin tamamını al
+                total_errors = len(errs_p2_combined)
+
+
+            if total_errors == 0:
                  self._update_status("Derleme başarıyla tamamlandı.")
-                 if not errs_p1: # Hiçbir pass1 hatası da yoksa
-                    messagebox.showinfo("Başarılı", "Derleme başarıyla tamamlandı.")
-                 else: # Pass1 hataları vardı ama P2'de yeni hata çıkmadı
-                    messagebox.showwarning("Derleme Tamamlandı (Hatalarla)", "Derleme Pass 1 hatalarıyla tamamlandı. Lütfen hataları kontrol edin.")
+                 messagebox.showinfo("Başarılı", "Derleme başarıyla tamamlandı.")
             else:
-                self._update_status("Derleme hatalarla tamamlandı.")
-                messagebox.showerror("Derleme Hatası", "Derleme sırasında hatalar oluştu. Lütfen 'Hatalar/Uyarılar' sekmesini kontrol edin.")
+                self._update_status(f"Derleme {total_errors} hata ile tamamlandı.")
+                messagebox.showerror("Derleme Hatası", f"Derleme sırasında {total_errors} hata oluştu. Lütfen 'Hatalar/Uyarılar' sekmesini ve Listelemeyi kontrol edin.")
 
         except Exception as e:
-            # Bu, assembler.py içindeki beklenmedik bir Python hatası olabilir
-            self.error_display.append_text(f"\nBEKLENMEDİK DERLEME HATASI: {e}")
+            self.error_display.append_text(f"\nBEKLENMEDİK KRİTİK DERLEME HATASI: {e}")
+            import traceback
+            self.error_display.append_text(traceback.format_exc())
             messagebox.showerror("Kritik Derleme Hatası", f"Beklenmedik bir hata oluştu:\n{e}")
             self._update_status(f"Kritik derleme hatası: {e}")
-            import traceback
-            self.error_display.append_text(traceback.format_exc()) # Detaylı hata izi
