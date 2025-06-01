@@ -28,7 +28,7 @@ except ImportError:
     # Şimdi tekrar deneyelim
     from assembler_core import assembler
 
-from .widgets import CodeEditor, OutputDisplay
+from .widgets import CodeEditor, OutputDisplay, MemoryViewer
 from .menu_bar import AppMenuBar
 
 class MainWindow(tk.Tk):
@@ -79,9 +79,12 @@ class MainWindow(tk.Tk):
         self.machine_code_display = OutputDisplay(notebook, height=15, width=60)
         notebook.add(self.machine_code_display, text="Makine Kodu")
 
-        self.error_display = OutputDisplay(notebook, height=7, width=60) # Yüksekliği biraz artırdım
+        self.error_display = OutputDisplay(notebook, height=7, width=60) # Yükseklik biraz artırdım
         self.error_display.configure(background="lightyellow")
         notebook.add(self.error_display, text="Hatalar/Uyarılar")
+
+        self.memory_viewer = MemoryViewer(notebook)
+        notebook.add(self.memory_viewer, text="Bellek Görüntüleyici")
 
         notebook.pack(fill=tk.BOTH, expand=True)
         self.top_paned_window.add(right_output_frame, weight=3) # Çıktı alanlarına daha fazla ağırlık
@@ -163,6 +166,8 @@ class MainWindow(tk.Tk):
         # M6800 CCR bit sırası: (X X H I N Z V C) - X'ler her zaman 1'dir.
         # Gösterim sırası genellikle H I N Z V C şeklindedir.
         self.ccr_var.set(f"${ccr_val:02X} ({h}{i_flag}{n}{z}{v}{c})")
+        # --- BELLEK GÜNCELLE ---
+        self.memory_viewer.set_memory(self.cpu_simulator.memory)
 
     def load_program_to_simulator(self):
         if self.last_mc_segments:
@@ -405,13 +410,15 @@ class MainWindow(tk.Tk):
             # Şimdilik errs_p1 ve errs_p2_pass_two_only'yi baz alalım.
             # Eğer listing'de hata varsa ve bu P1/P2 listelerinde yoksa, o da bir hatadır.
 
-            if not total_unique_errors and not any_error_in_listing : # Eğer listelerde hiç hata yoksa
-                self._update_status("Derleme başarıyla tamamlandı.")
-                messagebox.showinfo("Başarılı", "Derleme başarıyla tamamlandı.")
-                if mc_segments: # Sadece makine kodu üretildiyse yükleme butonunu aktif et
+            if not total_unique_errors and not any_error_in_listing:
+                # ...existing code...
+                if mc_segments:
                     self.last_mc_segments = mc_segments
-                    self.last_sym_table = sym_table # Sembol tablosunu da sakla
+                    self.last_sym_table = sym_table
                     self.load_to_sim_button.config(state=tk.NORMAL)
+                    # --- BELLEK GÜNCELLE ---
+                    self.cpu_simulator.load_memory(mc_segments)
+                    self.memory_viewer.set_memory(self.cpu_simulator.memory)
             else:
                 num_errors = len(total_unique_errors)
                 if any_error_in_listing and num_errors == 0: # Sadece listing'de gösterilen ama sayılmayan hata varsa

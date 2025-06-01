@@ -1,128 +1,156 @@
-# assembler_core/symbol_table.py
+# assembler_core/memory_viewer.py
+import tkinter as tk
+from tkinter import messagebox
+
+class MemoryViewer(tk.Frame):
+    """
+    Bellek görüntüleme ve düzenleme arayüzü için sınıf.
+    Bellek içeriğini tablo şeklinde gösterir ve kullanıcıya düzenleme imkanı tanır.
+    """
+
+    def __init__(self, master=None, memory=None, **kwargs):
+        super().__init__(master, **kwargs)
+        self.master = master
+        self.memory = memory if memory is not None else [0] * 0x10000  # Varsayılan olarak 64KB bellek
+        self.initUI()
+
+    def initUI(self):
+        """
+        Kullanıcı arayüzünü başlatır ve bileşenleri oluşturur.
+        """
+        self.tree = None  # Ağaç görünümünü daha sonra tanımlayacağız
+
+        # Üst çerçeve için bir çerçeve
+        frame_top = tk.Frame(self)
+        frame_top.pack(side=tk.TOP, fill=tk.X)
+
+        # Aşağıdaki çerçeve için
+        frame_bottom = tk.Frame(self)
+        frame_bottom.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=True)
+
+        # Bellek adresi girişi için etiket ve giriş kutusu
+        lbl_address = tk.Label(frame_top, text="Adres:")
+        lbl_address.pack(side=tk.LEFT, padx=5, pady=5)
+
+        self.ent_address = tk.Entry(frame_top, width=10)
+        self.ent_address.pack(side=tk.LEFT, padx=5, pady=5)
+
+        # Bellek değeri girişi için etiket ve giriş kutusu
+        lbl_value = tk.Label(frame_top, text="Değer:")
+        lbl_value.pack(side=tk.LEFT, padx=5, pady=5)
+
+        self.ent_value = tk.Entry(frame_top, width=10)
+        self.ent_value.pack(side=tk.LEFT, padx=5, pady=5)
+
+        # Belleği güncellemek için bir buton
+        btn_update = tk.Button(frame_top, text="Güncelle", command=self.update_memory)
+        btn_update.pack(side=tk.LEFT, padx=5, pady=5)
+
+        # Ağaç görünümünü oluştur
+        self.populate()
+
+        # Çift tıklama ile düzenleme
+        self.tree.bind("<Double-1>", self._on_double_click)
+
+    def populate(self):
+        """
+        Ağaç görünümünü bellekteki mevcut verilerle doldurur.
+        """
+        if self.tree is not None:
+            self.tree.destroy()  # Mevcut ağaç görünümünü yok et
+
+        # Yeni bir ağaç görünümü oluştur
+        self.tree = tk.ttk.Treeview(self, columns=("value"), show="headings")
+        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Yatay kaydırma çubuğu
+        scrollbar = tk.Scrollbar(self, orient="horizontal", command=self.tree.xview)
+        scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
+        self.tree.configure(xscroll=scrollbar.set)
+
+        # Dikey kaydırma çubuğu
+        scrollbar = tk.Scrollbar(self, orient="vertical", command=self.tree.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.tree.configure(yscroll=scrollbar.set)
+
+        # Sütun başlıklarını ayarla
+        self.tree.heading("value", text="Değer")
+        self.tree.column("value", width=100)
+
+        # Bellek içeriğini ağaç görünümüne ekle
+        for i in range(0, len(self.memory), 16):
+            # Her satır için bellek adresi ve değerlerini al
+            addr = f"${i:04X}"
+            values = [f"${x:02X}" for x in self.memory[i:i+16]]
+            # Boş değerleri '-' ile doldur
+            values += ['-'] * (16 - len(values))
+            self.tree.insert("", "end", iid=addr, text=addr, values=values)
+
+    def update_memory(self):
+        """
+        Kullanıcının girdiği adres ve değere göre belleği günceller.
+        """
+        try:
+            addr = int(self.ent_address.get(), 16)
+            value = int(self.ent_value.get(), 16)
+            self.memory[addr] = value & 0xFF  # Sadece düşük byte'ı al
+            self.populate()  # Ağaç görünümünü güncelle
+        except Exception as e:
+            messagebox.showerror("Hata", f"Geçersiz adres veya değer: {e}")
+
+    def _on_double_click(self, event):
+        """
+        Ağaç görünümünde çift tıklama olayı için işlemci.
+        Kullanıcıya bellek değerini düzenleme imkanı tanır.
+        """
+        item = self.tree.identify_row(event.y)
+        column = self.tree.identify_column(event.x)
+        if not item or column != "#2":  # Sadece değerler sütunu düzenlenebilir
+            return
+        addr_str = self.tree.item(item, "values")[0]
+        addr = int(addr_str[1:], 16)
+        # Basit bir input dialog ile yeni değer al
+        import tkinter.simpledialog
+        new_val = tkinter.simpledialog.askstring("Bellek Düzenle", f"{addr_str} adresindeki 16 byte'ı girin (hex, boşluklu):")
+        if new_val:
+            try:
+                vals = [int(x, 16) for x in new_val.strip().split()]
+                if len(vals) != 16:
+                    raise ValueError("16 adet byte girilmeli.")
+                for i, v in enumerate(vals):
+                    self.memory[addr + i] = v & 0xFF
+                self.populate()
+            except Exception as e:
+                messagebox.showerror("Hata", f"Geçersiz giriş: {e}")
 
 class SymbolTable:
-    """
-    Assembler için sembol tablosunu (etiketler ve değerleri) yöneten sınıf.
-    Etiketler büyük/küçük harf duyarsız olarak saklanır (genellikle büyük harfe çevrilir).
-    """
-
     def __init__(self):
-        """
-        Yeni bir boş sembol tablosu oluşturur.
-        self.table: Etiket adlarını (string) değerlerine (integer) eşleyen bir sözlük.
-                     {'ETIKET_ADI': adres_veya_deger}
-        self.definitions: Etiketin hangi satırda tanımlandığını tutar, hata mesajları için.
-                          {'ETIKET_ADI': satir_numarasi}
-        """
-        self.table = {}
-        self.definitions = {} # Hangi etiketin hangi satırda tanımlandığını izlemek için
+        self.symbols = {}
 
-    def add_symbol(self, name, value, line_num):
-        """
-        Sembol tablosuna yeni bir etiket ve değerini ekler.
-
-        Args:
-            name (str): Eklenecek etiketin adı.
-            value (int): Etikete atanacak değer (adres veya sabit).
-            line_num (int): Etiketin tanımlandığı kaynak koddaki satır numarası (hata raporlama için).
-
-        Raises:
-            ValueError: Eğer etiket zaten tabloda tanımlıysa.
-        """
-        # Etiket adlarını standart bir formatta (büyük harf) saklamak iyi bir pratiktir.
-        # Bu, 'Loop' ve 'LOOP' gibi etiketlerin aynı kabul edilmesini sağlar.
-        normalized_name = name.upper()
-
-        if normalized_name in self.table:
-            original_definition_line = self.definitions.get(normalized_name, "bilinmiyor")
-            raise ValueError(
-                f"Satır {line_num}: '{name}' etiketi zaten Satır {original_definition_line}'da tanımlanmış."
-            )
-        
-        self.table[normalized_name] = value
-        self.definitions[normalized_name] = line_num
+    def add_symbol(self, name, value, line_num=None):
+        if name in self.symbols:
+            raise ValueError(f"Etiket zaten tanımlı: {name}")
+        self.symbols[name] = (value, line_num)
 
     def get_symbol_value(self, name):
-        """
-        Verilen bir etiketin değerini sembol tablosundan alır.
-
-        Args:
-            name (str): Değeri sorgulanacak etiketin adı.
-
-        Returns:
-            int or None: Etiketin değeri (eğer bulunursa), aksi takdirde None.
-        """
-        normalized_name = name.upper()
-        return self.table.get(normalized_name) # Sözlükte yoksa None döner
-
-    def is_defined(self, name):
-        """
-        Verilen bir etiketin sembol tablosunda tanımlı olup olmadığını kontrol eder.
-
-        Args:
-            name (str): Kontrol edilecek etiketin adı.
-
-        Returns:
-            bool: Etiket tanımlıysa True, değilse False.
-        """
-        normalized_name = name.upper()
-        return normalized_name in self.table
+        entry = self.symbols.get(name)
+        return entry[0] if entry else None
 
     def __str__(self):
-        """
-        Sembol tablosunun string temsilini döndürür (yazdırma ve hata ayıklama için).
-        Değerleri hex formatında göstermek okunurluğu artırabilir.
-        """
-        if not self.table:
-            return "Sembol Tablosu Boş."
-        
-        # Okunurluk için etiketleri sıralayabilir ve değerleri hex formatında gösterebiliriz
-        sorted_symbols = sorted(self.table.items())
-        
-        output = "Sembol Tablosu:\n"
-        output += "--------------------\n"
-        output += "{:<15} | {:<10} | {:<10}\n".format("Etiket Adı", "Değer (Hex)", "Tanım Satırı")
-        output += "--------------------\n"
-        for name, value in sorted_symbols:
-            # Değerin tipine göre formatlama yapabiliriz, ama genellikle int olacak
-            hex_value = f"${value:04X}" if isinstance(value, int) else str(value)
-            definition_line = self.definitions.get(name, '-') # Tanım satırı bilgisi
-            output += "{:<15} | {:<10} | {:<10}\n".format(name, hex_value, definition_line)
-        output += "--------------------\n"
-        return output
-
-    def clear(self):
-        """
-        Sembol tablosundaki tüm girişleri temizler.
-        Yeniden assemble etme durumlarında kullanışlı olabilir.
-        """
-        self.table.clear()
-        self.definitions.clear()
+        lines = ["Sembol Tablosu:"]
+        for name, (value, line_num) in sorted(self.symbols.items()):
+            lines.append(f"{name:<12} = ${value:04X} (Satır: {line_num})")
+        return "\n".join(lines)
 
 # Sınıfın nasıl kullanılacağını göstermek için basit bir test bloğu
 if __name__ == '__main__':
-    st = SymbolTable()
+    root = tk.Tk()
+    root.title("Bellek Görüntüleyici")
 
-    try:
-        st.add_symbol("START", 0x0100, 1)
-        st.add_symbol("LOOP", 0x010A, 5)
-        st.add_symbol("COUNTER", 0x0200, 10)
-        st.add_symbol("VAL_EQU", 255, 12) # EQU ile tanımlanmış gibi
+    # Örnek bellek verisi ile
+    example_memory = [i for i in range(256)] * 64  # Toplamda 16KB
 
-        print(st)
+    viewer = MemoryViewer(master=root, memory=example_memory)
+    viewer.pack(fill=tk.BOTH, expand=True)
 
-        print(f"\nLOOP etiketinin değeri: ${st.get_symbol_value('loop'):04X}") # Büyük/küçük harf duyarsız sorgu
-        print(f"START etiketi tanımlı mı? {st.is_defined('START')}")
-        print(f"UNKNOWN etiketi tanımlı mı? {st.is_defined('UNKNOWN')}")
-        print(f"UNKNOWN etiketinin değeri: {st.get_symbol_value('UNKNOWN')}")
-
-        # Aynı etiketi tekrar eklemeye çalışma (hata vermeli)
-        print("\n'START' etiketini tekrar eklemeye çalışılıyor...")
-        st.add_symbol("START", 0x0150, 15)
-
-    except ValueError as e:
-        print(f"HATA: {e}")
-
-    st.clear()
-    print("\nTablo temizlendikten sonra:")
-    print(st)
+    root.mainloop()

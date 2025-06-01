@@ -51,6 +51,28 @@ class OutputDisplay(tk.Text):
         self.delete("1.0", tk.END)
         self.configure(state=tk.DISABLED)
 
+class MemoryViewer(tk.Frame):
+    def __init__(self, master=None, memory=None, **kwargs):
+        super().__init__(master, **kwargs)
+        self.memory = memory if memory is not None else [0] * 0x10000  # 64K bellek
+        self.tree = ttk.Treeview(self, columns=("addr", "values"), show="headings", height=20)
+        self.tree.heading("addr", text="Adres")
+        self.tree.heading("values", text="Değerler (16 byte)")
+        self.tree.column("addr", width=70, anchor="center")
+        self.tree.column("values", width=400, anchor="w")
+        self.tree.pack(fill=tk.BOTH, expand=True)
+        self.populate()
+
+    def populate(self):
+        self.tree.delete(*self.tree.get_children())
+        for row_addr in range(0, 0x10000, 16):
+            values = " ".join(f"{self.memory[row_addr + i]:02X}" for i in range(16))
+            self.tree.insert("", "end", values=(f"${row_addr:04X}", values))
+
+    def set_memory(self, memory):
+        self.memory = memory
+        self.populate()
+
 # Eğer başka widget'larınız varsa onları da buraya ekleyin.
 # Örneğin, menu_bar.py'daki AppMenuBar da eğer burada tanımlanacaksa:
 # class AppMenuBar(tk.Menu):

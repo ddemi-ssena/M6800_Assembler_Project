@@ -18,7 +18,7 @@ if __package__:
     from .m6800_opcodes import OPCODE_TABLE, ADDR_MODE_IMMEDIATE, ADDR_MODE_DIRECT, \
                                ADDR_MODE_EXTENDED, ADDR_MODE_INDEXED, ADDR_MODE_RELATIVE, \
                                ADDR_MODE_INHERENT, PSEUDO_OPS # PSEUDO_OPS buradan gelmeli
-    from .symbol_table import SymbolTable
+    from .symbol_table import SymbolTable  # Örneğin başka bir dosyada ise
     print("assembler.py: Göreceli importlar denendi.")
 else:
     print("assembler.py: Paket bilgisi yok. Doğrudan importlar deneniyor...")
@@ -26,7 +26,7 @@ else:
     from m6800_opcodes import OPCODE_TABLE, ADDR_MODE_IMMEDIATE, ADDR_MODE_DIRECT, \
                                ADDR_MODE_EXTENDED, ADDR_MODE_INDEXED, ADDR_MODE_RELATIVE, \
                                ADDR_MODE_INHERENT, PSEUDO_OPS
-    from symbol_table import SymbolTable
+    from .symbol_table import SymbolTable  # Örneğin başka bir dosyada ise
     print("assembler.py: Doğrudan importlar tamamlandı.")
 
 # --- Sabitler ve Regex'ler ---
