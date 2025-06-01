@@ -1,0 +1,14 @@
+digraph M6800_Flowchart {
+    rankdir=TB;
+    node [fontname="Arial", shape=box];
+    edge [fontname="Arial"];
+
+    // Nodes
+    node_START [shape=Mdiamond, label="Başlangıç"];
+    node_instr_4 [label="START   EQU     $C000", shape=box];
+    node_END [shape=Mdiamond, label="Son"];
+
+    // Edges
+    node_instr_4 -> node_instr_4;
+    node_instr_4 -> node_END;
+}

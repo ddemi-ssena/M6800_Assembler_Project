@@ -1,0 +1,16 @@
+digraph M6800_Flowchart {
+    rankdir=TB;
+    node [fontname="Arial", shape=box];
+    edge [fontname="Arial"];
+
+    // Nodes
+    node_START [shape=Mdiamond, label="Başlangıç"];
+    node_label_START [label="START:  LDAA    #$03", shape=box];
+    node_instr_6 [label="STAA    $2000\nRTS", shape=box];
+    node_instr_6_return_end [label="RTS\n(Dönüş)", shape=Mdiamond];
+
+    // Edges
+    node_label_START -> node_label_START;
+    node_label_START -> node_label_LOOP [label="BNE (Evet)", color=blue];
+    node_instr_6 -> node_instr_6_return_end;
+}

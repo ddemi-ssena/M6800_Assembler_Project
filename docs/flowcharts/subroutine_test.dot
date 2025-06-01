@@ -1,0 +1,18 @@
+digraph M6800_Flowchart {
+    rankdir=TB;
+    node [fontname="Arial", shape=box];
+    edge [fontname="Arial"];
+
+    // Nodes
+    node_START [shape=Mdiamond, label="Başlangıç"];
+    node_label_MAIN_PROG [label="LDAA    #$01\nJSR     MY_SUB", shape=box];
+    node_instr_6 [label="ADDA    #$02\nRTS", shape=box];
+    node_instr_6_return_end [label="RTS\n(Dönüş)", shape=Mdiamond];
+    node_label_MY_SUB [label="PSHA\nLDAB    #$F0\nPULA\nRTS", shape=box];
+    node_label_MY_SUB_return_end [label="RTS\n(Dönüş)", shape=Mdiamond];
+
+    // Edges
+    node_label_MAIN_PROG -> node_label_MY_SUB [label="JSR", color=red];
+    node_instr_6 -> node_instr_6_return_end;
+    node_label_MY_SUB -> node_label_MY_SUB_return_end;
+}
